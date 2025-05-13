@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>PaddleOCR 即時辨識</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; padding: 20px; background: #f5f5f5; }
+    video { display: block; margin: 0 auto; width: 100%; max-width: 360px; }
+    #result, #finalArea { margin-top: 20px; font-size: 16px; white-space: pre-wrap; }
+    button {
+      margin: 10px 5px;
+      padding: 8px 16px;
+      font-size: 16px;
+      border: 2px solid #333;
+      border-radius: 6px;
+      background-color: white;
+      color: black;
+    }
+    #finalArea {
+      display: none;
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    }
+  </style>
+  <!-- 加入 Socket.IO -->
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+  <h2>📷 PaddleOCR 即時文字辨識</h2>
+
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas" style="display:none;"></canvas>
+
+  <div>
+    <button id="startBtn">🔍 開始辨識</button>
+    <button id="stopBtn" disabled>✅ 完成掃描</button>
+  </div>
+
+  <p id="result">📄 等待辨識中...</p>
+
+  <div id="finalArea">
+    <h3>📝 辨識結果：</h3>
+    <p id="finalText"></p>
+    <button id="voiceBtn">🎙 語音輸入</button>
+    <button id="confirmSave" style="display:none;">💾 確認儲存</button>
+    <button onclick="location.reload()">✅ 完成</button>
+  </div>
+
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const result = document.getElementById("result");
+    const finalText = document.getElementById("finalText");
+    const ctx = canvas.getContext("2d");
+
+    let timer = null;
+    let latestText = "";
+
+    // === OCR 掃描部分 ===
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { exact: "environment" } }, audio: false
+    }).then(stream => {
+      video.srcObject = stream;
+    }).catch(err => alert("⚠️相機開啟失敗：" + err));
+
+    document.getElementById("startBtn").onclick = () => {
+      result.textContent = "開始辨識中...";
+      document.getElementById("startBtn").disabled = true;
+      document.getElementById("stopBtn").disabled = false;
+
+      timer = setInterval(() => {
+        if (video.videoWidth === 0) return;
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const imageData = canvas.toDataURL("image/png");
+
+        fetch("https://de50-125-228-143-171.ngrok-free.app/ocr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: imageData })
+        })
+        .then(res => res.json())
+        .then(data => {
+          const text = data.text?.trim();
+          if (text) {
+            latestText = text;
+            result.textContent = "最新辨識：\n" + text;
+          } else {
+            result.textContent = "正在辨識中...";
+          }
+        })
+        .catch(err => {
+          result.textContent = "❌ 錯誤：" + err;
+        });
+      }, 2000);
+    };
+
+    document.getElementById("stopBtn").onclick = () => {
+      clearInterval(timer);
+      document.getElementById("startBtn").disabled = false;
+      document.getElementById("stopBtn").disabled = true;
+
+      document.getElementById("finalText").textContent = latestText || "⚠️沒有辨識到任何文字";
+      document.getElementById("finalArea").style.display = "block";
+      result.style.display = "none";
+      video.style.display = "none";
+    };
+
+    // === 語音輸入（SocketIO + 錄音） ===
+    const socket = io("https://de50-125-228-143-171.ngrok-free.app");  // ✅ 替換為你的 ngrok 域名
+    let mediaRecorder;
+    let audioChunks = [];
+
+    document.getElementById("voiceBtn").onclick = async () => {
+      if (!mediaRecorder || mediaRecorder.state === "inactive") {
+        document.getElementById("voiceBtn").textContent = "🎙 錄音中... 點我停止";
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = event => {
+          audioChunks.push(event.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+          const arrayBuffer = await audioBlob.arrayBuffer();
+          socket.emit("audio", { audio: arrayBuffer });
+          document.getElementById("voiceBtn").textContent = "🎙 語音輸入";
+        };
+
+        socket.emit("start_recording");
+        mediaRecorder.start();
+      } else {
+        mediaRecorder.stop();
+        socket.emit("stop_recording");
+      }
+    };
+
+    let finalVoiceText = "";  // 全局變數存最後語音結果
+
+    socket.on("transcription", data => {
+      if (data.text) {
+        finalVoiceText = data.text;
+        finalText.textContent = "🎤 語音辨識結果：\n" + data.text;
+        document.getElementById("confirmSave").style.display = "inline-block";
+      }
+    });
+    document.getElementById("confirmSave").onclick = () => {
+      fetch("https://de50-125-228-143-171.ngrok-free.app/save_transcription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: finalVoiceText })
+      })
+      .then(res => res.json())
+      .then(data => {
+        alert("✅ 成功儲存語音結果！");
+        document.getElementById("confirmSave").style.display = "none";
+      })
+      .catch(err => {
+        alert("❌ 儲存失敗：" + err);
+      });
+    };
+
+  </script>
+</body>
+</html>

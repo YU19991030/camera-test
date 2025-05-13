@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>相機 + 錄音 測試</title>
+</head>
+<body>
+  <h1>🎥 相機預覽 + 錄音</h1>
+
+  <!-- 相機預覽區 -->
+  <video id="video" autoplay playsinline width="320" height="240"></video>
+  <br>
+
+  <!-- 控制按鈕 -->
+  <button id="start">開始錄影</button>
+  <button id="stop" disabled>停止錄影</button>
+
+  <!-- 影片回放 -->
+  <h3>📂 錄影結果：</h3>
+  <video id="recorded" controls width="320" height="240"></video>
+
+  <script>
+    const video = document.getElementById('video');
+    const recorded = document.getElementById('recorded');
+    const startBtn = document.getElementById('start');
+    const stopBtn = document.getElementById('stop');
+
+    let mediaRecorder;
+    let recordedChunks = [];
+
+    // 開啟相機與麥克風
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      .then(stream => {
+        video.srcObject = stream;
+
+        mediaRecorder = new MediaRecorder(stream);
+
+        mediaRecorder.ondataavailable = e => {
+          if (e.data.size > 0) recordedChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          recorded.src = URL.createObjectURL(blob);
+        };
+
+        startBtn.onclick = () => {
+          recordedChunks = [];
+          mediaRecorder.start();
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+        };
+
+        stopBtn.onclick = () => {
+          mediaRecorder.stop();
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+        };
+      })
+      .catch(err => {
+        alert('無法開啟相機/麥克風：' + err);
+      });
+  </script>
+</body>
+</html>
