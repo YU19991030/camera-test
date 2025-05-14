@@ -10,7 +10,7 @@ import soundfile as sf
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 
 # 🔧 請修改成你的後端 FastAPI API 網址
-API_BASE = "https://你的-api.ngrok-free.app"
+API_BASE = "  https://de50-125-228-143-171.ngrok-free.app"
 
 st.set_page_config(page_title="📷 即時 OCR + 🎙 語音辨識", layout="centered")
 st.title("📷 即時 PaddleOCR + 🎙 Whisper 語音辨識")
