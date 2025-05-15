@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+paddleocr
+paddlepaddle
+faster-whisper
+python-multipart
+numpy
+opencv-python-headless
+pillow
+sounddevice
+soundfile
+streamlit
+streamlit-webrtc
+pydub
